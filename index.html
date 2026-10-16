@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AITER-Triton · perf-daily</title>
+<meta name="description" content="Nightly Triton main performance on the AITER Triton benchmarks, MI350X (gfx950).">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c0f14'/%3E%3Cpath d='M6 22 L13 10 L17 17 L21 11 L26 22' fill='none' stroke='%232fd4c4' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>
+  // Theme before first paint (no flash). Same tokens and default (dark) as the AITER benchmark dashboard.
+  try { var t = localStorage.getItem("pd-theme"); if (t === "light") document.documentElement.setAttribute("data-theme", "light"); } catch (e) {}
+</script>
+<style>
+/* ===========================================================================
+   AITER-Triton perf-daily. Visual language follows the AITER benchmark
+   dashboard (ci_monitor/dashboard): flat dark surfaces, mono for data,
+   semantic color only where it carries meaning.
+   =========================================================================== */
+:root {
+  --bg: #0b0c10; --bg-2: #141519; --bg-3: #1c1d24;
+  --border: #303140; --border-2: #262733;
+  --ink: #eef0f6; --ink-2: #bfc1d0; --ink-3: #7e8094; --ink-4: #4a4d5e;
+  --brand: #2fd4c4; --brand-2: #25b0a3;
+  --good: #6dbf80; --warn: #eda06a; --bad: #f25c4e;
+  --good-bg: rgba(109,191,128,.10); --warn-bg: rgba(237,160,106,.10); --bad-bg: rgba(242,92,78,.10);
+  --brand-bg: rgba(47,212,196,.10);
+  --gfx950: #54adff;
+  --mono: "SF Mono", "Fira Code", Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --hover: rgba(255,255,255,.04);
+  --r: 8px;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f5f6fa; --bg-2: #ffffff; --bg-3: #ebedf3;
+  --border: #d0d3dc; --border-2: #e2e4eb;
+  --ink: #1a1c24; --ink-2: #4a4d5e; --ink-3: #7e8094; --ink-4: #b6c0cc;
+  --brand: #11a99b; --brand-2: #0d8b80;
+  --good: #2e8b47; --warn: #c47a30; --bad: #d63a2f;
+  --good-bg: rgba(46,139,71,.10); --warn-bg: rgba(196,122,48,.10); --bad-bg: rgba(214,58,47,.10);
+  --brand-bg: rgba(17,169,155,.10);
+  --gfx950: #2b7fd6;
+  --hover: rgba(0,0,0,.035);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+  font-size: 14px; -webkit-font-smoothing: antialiased; }
+a { color: var(--brand); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible, tr[tabindex]:focus-visible {
+  outline: 2px solid var(--brand); outline-offset: 2px; }
+code, .mono { font-family: var(--mono); font-size: 12px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ topbar */
+.topbar { display: flex; align-items: center; gap: 20px; padding: 12px 24px;
+  border-bottom: 1px solid var(--border); background: var(--bg-2);
+  position: sticky; top: 0; z-index: 20; }
+.brand-t { font-weight: 600; font-size: 14px; color: var(--ink); white-space: nowrap; }
+.brand-t span { color: var(--ink-3); font-weight: 400; margin-left: 6px; }
+.arch-chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono);
+  font-size: 11px; color: var(--ink-2); }
+.arch-chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--gfx950); }
+.arch-chip small { color: var(--ink-3); }
+.status-cluster { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.updated { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-align: right; }
+.btn-icon { background: var(--bg-3); border: 1px solid var(--border); color: var(--ink-2);
+  border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 13px; }
+.btn-icon:hover { color: var(--ink); border-color: var(--brand-2); }
+
+main { padding: 20px 24px 8px; max-width: 1560px; margin: 0 auto; }
+
+/* --------------------------------------------------------------- KPI strip */
+.strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--bg-2);
+  border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 20px; overflow: hidden; }
+.strip > div { padding: 14px 20px; border-left: 1px solid var(--border-2); min-width: 0; }
+.strip > div:first-child { border-left: 0; }
+.label { font-family: var(--mono); font-size: 10px; letter-spacing: .5px; text-transform: uppercase; color: var(--ink-3); }
+.big { font-family: var(--mono); font-size: 24px; font-weight: 600; margin-top: 6px; color: var(--ink); }
+.big small { font-size: 13px; font-weight: 400; color: var(--ink-3); }
+.sub { color: var(--ink-3); font-family: var(--mono); font-size: 11px; margin-top: 4px; overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------------- panel */
+.panel { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--r);
+  overflow: hidden; margin-bottom: 20px; min-width: 0; }
+.panel-head { display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+  border-bottom: 1px solid var(--border-2); flex-wrap: wrap; }
+.panel-head .t { font-weight: 600; font-size: 13px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .5px; }
+.panel-head .hint { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.spacer { flex: 1; }
+.pad { padding: 14px 20px; }
+.empty { padding: 18px 20px; color: var(--ink-3); font-family: var(--mono); font-size: 12px; margin: 0; }
+.loading { padding: 48px 20px; text-align: center; color: var(--ink-3); font-family: var(--mono); }
+
+/* status pills: outline badges, as the dashboard's cycle verdicts */
+.pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px; font-weight: 600;
+  padding: 2px 9px; border-radius: 10px; border: 1px solid var(--border-2); color: var(--ink-3);
+  letter-spacing: .3px; text-transform: uppercase; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.s-OK { color: var(--good); border-color: rgba(120,190,140,.35); }
+.s-ATTENTION, .s-OPEN { color: var(--warn); border-color: rgba(237,160,106,.4); }
+.s-REGRESSION, .s-FAILED { color: var(--bad); border-color: var(--bad); }
+.chg-bad { color: var(--bad); font-weight: 600; }
+.chg-good { color: var(--good); font-weight: 600; }
+
+/* --------------------------------------- open regressions: key-workload rows */
+.col-head, .wl-row { display: grid; grid-template-columns: 1.3fr 1.6fr 2fr 280px 96px 118px;
+  align-items: center; gap: 16px; }
+.col-head { padding: 10px 20px; font-family: var(--mono); font-size: 10px; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--border); }
+.col-head .r, .wl-row .r { text-align: right; }
+.wl-row { padding: 12px 20px; border-bottom: 1px solid var(--border-2); font-family: var(--mono);
+  font-size: 12px; position: relative; }
+.wl-row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sevc, transparent); }
+.wl-row.s-bad { --sevc: var(--bad); }
+.wl-row:hover { background: var(--hover); }
+.wl-row:last-child { border-bottom: 0; }
+.wl-row .op { color: var(--ink); }
+.wl-row .op small, .wl-row .why small { display: block; margin-top: 3px; font-size: 10px; color: var(--ink-3); }
+.wl-row .shape { color: var(--ink-2); overflow-wrap: anywhere; }
+.wl-row .why { color: var(--ink-3); font-size: 11px; line-height: 1.5; min-width: 0; }
+.wl-row .latest { text-align: right; color: var(--ink-2); }
+.wl-row .latest small { display: block; color: var(--ink-3); font-size: 10px; margin-top: 2px; }
+.wl-delta { text-align: right; font-weight: 600; font-size: 13px; }
+.wl-delta.bad { color: var(--bad); } .wl-delta.ok { color: var(--good); }
+.wl-delta small { display: block; font-size: 9px; font-weight: 400; color: var(--ink-4);
+  letter-spacing: .3px; text-transform: uppercase; margin-top: 2px; }
+.wl-row svg { width: 280px; height: 40px; display: block; max-width: 100%; }
+.credits { border-top: 1px solid var(--border); padding: 12px 20px; background: var(--bg-3); }
+.credits .meta { font-family: var(--mono); font-size: 12px; color: var(--ink-2); margin: 4px 0; }
+
+/* ------------------------------------------------------------------ tables */
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; }
+th { text-align: left; font-family: var(--mono); font-weight: 400; font-size: 10px; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--ink-3); padding: 10px 12px; border-bottom: 1px solid var(--border);
+  white-space: nowrap; background: var(--bg-2); }
+td { padding: 9px 12px; border-bottom: 1px solid var(--border-2); vertical-align: top; color: var(--ink-2); }
+tbody tr:hover td { background: var(--hover); }
+td.wrapcell { overflow-wrap: anywhere; min-width: 9em; color: var(--ink); }
+td.r, th.r { text-align: right; }
+th:first-child, td:first-child { padding-left: 20px; }
+th:last-child, td:last-child { padding-right: 20px; }
+tr.night { cursor: pointer; }
+tr.night[aria-expanded="true"] td { background: var(--bg-3); }
+tr.detail > td { background: var(--bg); padding: 12px 20px 16px; }
+tr.detail table { background: var(--bg-2); border: 1px solid var(--border-2); border-radius: 6px; }
+.subject { color: var(--ink-3); font-size: 11px; display: block; max-width: 52ch; overflow-wrap: anywhere; margin-top: 2px; }
+.caret { display: inline-block; width: 12px; color: var(--ink-3); transition: transform .15s; }
+tr[aria-expanded="true"] .caret { transform: rotate(90deg); }
+.detail h4, #latest h4 { margin: 10px 0 6px; font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .5px; text-transform: uppercase; }
+.tag { display: inline-block; font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 1px 8px;
+  border-radius: 10px; border: 1px solid var(--border-2); white-space: nowrap; cursor: help; color: var(--ink-3); }
+.tag.alert { color: var(--bad); border-color: var(--bad); }
+.tag.credit { color: var(--good); border-color: rgba(120,190,140,.35); }
+.tag.code { color: var(--brand); border-color: rgba(47,212,196,.35); }
+.tag.ctx { color: var(--warn); border-color: rgba(237,160,106,.4); }
+.key { color: var(--ink-3); font-family: var(--mono); font-size: 11px; margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+
+/* ------------------------------------------------------------------ trends */
+.controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; padding: 12px 20px; border-bottom: 1px solid var(--border-2); }
+.controls label { display: grid; gap: 4px; min-width: 0; }
+select, input[type="search"] { font: 12px var(--mono); color: var(--ink); background: var(--bg-3); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; max-width: 100%; }
+select { min-width: 160px; }
+.chartbox { position: relative; height: 300px; padding: 14px 20px 6px; }
+.chart-cap { padding: 0 20px 12px; color: var(--ink-3); font-family: var(--mono); font-size: 11px; }
+tr.series { cursor: pointer; }
+tr.series.sel td { background: var(--brand-bg); }
+td svg.spark { width: 120px; height: 26px; display: block; }
+
+/* --------------------------------------------------------- how it works */
+.howto { padding: 4px 20px 14px; color: var(--ink-3); font-size: 12.5px; line-height: 1.6; max-width: 1100px; }
+.footer { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border);
+  font-family: var(--mono); font-size: 11px; color: var(--ink-3); max-width: 1560px; margin: 0 auto; flex-wrap: wrap; }
+.footer a { color: var(--ink-2); }
+.footer .sep { color: var(--border); }
+
+@media (max-width: 1100px) {
+  .col-head { display: none; }
+  .wl-row { grid-template-columns: 1fr 1fr; }
+  .wl-row svg { width: 100%; }
+}
+@media (max-width: 900px) {
+  .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .strip > div:nth-child(3) { border-left: 0; }
+  .strip > div:nth-child(n+3) { border-top: 1px solid var(--border-2); }
+  .topbar { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .caret { transition: none; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="brand-t">AITER-Triton<span>perf-daily</span></span>
+  <span class="arch-chip"><i></i>gfx950<small>MI350X</small></span>
+  <div class="status-cluster">
+    <span class="updated" id="stamp">loading&hellip;</span>
+    <button class="btn-icon" id="themeBtn" title="Toggle theme" aria-label="Toggle light/dark theme">&#9680;</button>
+    <button class="btn-icon" id="refresh" title="Reload data (R)" aria-label="Reload data">&#8635;</button>
+  </div>
+</header>
+
+<main>
+  <div class="strip" id="strip" aria-live="polite"><div class="loading">Loading the nightly record&hellip;</div></div>
+
+  <section class="panel" aria-labelledby="h-open">
+    <div class="panel-head"><span class="t" id="h-open">Open regressions</span>
+      <span class="hint">confirmed &gt;5% slower and the assembly changed &middot; tracked until fixed or accepted</span></div>
+    <div class="col-head"><span>bench</span><span>shape &middot; metric</span><span>culprit</span><span>since baseline</span>
+      <span class="r">&Delta; vs baseline</span><span class="r">latest</span></div>
+    <div id="alerts"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-latest">
+    <div class="panel-head"><span class="t" id="h-latest">Last night's triage</span><span class="spacer"></span><span class="hint" id="latest-sub"></span></div>
+    <div id="latest"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-nights">
+    <div class="panel-head"><span class="t" id="h-nights">Night log</span>
+      <span class="hint">Triton main vs the previous night's main &middot; click a night for its triage</span></div>
+    <div class="tbl"><table id="nights"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-trends">
+    <div class="panel-head"><span class="t" id="h-trends">Trends</span>
+      <span class="hint">median of the 3 repeats of each night's Triton</span></div>
+    <div class="controls">
+      <label><span class="label">Category</span><select id="f-cat"></select></label>
+      <label><span class="label">Bench</span><select id="f-bench"></select></label>
+      <label style="flex:1 1 180px"><span class="label">Filter shapes</span><input type="search" id="f-shape" placeholder="e.g. 8192"></label>
+    </div>
+    <div class="chartbox"><canvas id="chart" aria-label="Trend of the selected series"></canvas></div>
+    <div class="chart-cap" id="chart-cap"></div>
+    <div class="tbl"><table id="series"></table></div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-how">
+    <div class="panel-head"><span class="t" id="h-how">How a night works</span></div>
+    <div class="howto">
+      <p>Every night the CI builds Triton main and runs all AITER Triton benches on it and on the previous night's build, interleaved, 3 repeats each, on the same GPU and AITER tree (AITER main plus the CI's bench additions). Every point more than 5% slower or faster, beyond its own repeat noise, is rerun 5 times and the kernels both builds compiled are compared. Confirmed and assembly changed means an alert (slower) or a credit (faster), and both are bisected to the Triton commit that changed the assembly. Points that are not confirmed, or compile identically, are noise or the machine and do not alert.</p>
+      <p>Only merged Triton main and AITER main are recorded here. Checks of pull requests and branches run separately and never enter this history.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <span id="foot-gen"></span>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/triton-lang/triton" target="_blank" rel="noopener">github.com/triton-lang/triton</a>
+  <span class="sep">&middot;</span>
+  <a href="https://github.com/ROCm/aiter" target="_blank" rel="noopener">github.com/ROCm/aiter</a>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const TRITON = "https://github.com/triton-lang/triton";
+  const pct = (x, digits = 1) => x == null ? "&ndash;" : `${x > 0 ? "+" : ""}${(x * 100).toFixed(digits)}%`;
+  const chgClass = (x) => x == null ? "" : x <= -0.05 ? "chg-bad" : x >= 0.05 ? "chg-good" : "";
+  const fmtVal = (v) => v == null ? "&ndash;" : Math.abs(v) >= 1000 ? v.toFixed(0) : Math.abs(v) >= 100 ? v.toFixed(1) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toPrecision(3);
+  const shortTest = (t) => String(t || "").replace(/^bench_/, "");
+  const statusKey = (s) => String(s || "").split(" ")[0];
+  const pill = (s) => `<span class="pill s-${esc(statusKey(s))}">${esc(s)}</span>`;
+  const commitLink = (c, withSubject) => {
+    if (!c || !c.sha) return "&ndash;";
+    const pr = c.pr ? ` (<a href="${TRITON}/pull/${esc(c.pr)}" target="_blank" rel="noopener">#${esc(c.pr)}</a>)` : "";
+    const subj = withSubject && c.subject ? `<span class="subject">${esc(c.subject.replace(` (#${c.pr})`, ""))}</span>` : "";
+    return `<a class="mono" href="${TRITON}/commit/${esc(c.sha)}" target="_blank" rel="noopener">${esc(c.sha.slice(0, 8))}</a>${pr}${subj}`;
+  };
+  const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
+
+  function spark(points, opts = {}) {
+    // points: [[x, y], ...]; inline SVG, drawn to one scale.
+    const w = opts.w || 120, h = opts.h || 26, p = 3;
+    const ys = points.map((q) => q[1]).concat(opts.base != null ? [opts.base] : []);
+    if (!points.length) return "";
+    let lo = Math.min(...ys), hi = Math.max(...ys);
+    if (hi - lo < 1e-12) { hi += Math.abs(hi) * 0.01 + 1e-9; lo -= Math.abs(lo) * 0.01 + 1e-9; }
+    const xs = points.map((q) => q[0]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs);
+    const sx = (x) => x1 === x0 ? w / 2 : p + (x - x0) / (x1 - x0) * (w - 2 * p);
+    const sy = (y) => h - p - (y - lo) / (hi - lo) * (h - 2 * p);
+    const d = points.map((q, i) => `${i ? "L" : "M"}${sx(q[0]).toFixed(1)},${sy(q[1]).toFixed(1)}`).join("");
+    const area = `${d}L${sx(points[points.length - 1][0]).toFixed(1)},${h - p}L${sx(points[0][0]).toFixed(1)},${h - p}Z`;
+    const last = points[points.length - 1];
+    const col = opts.color || "var(--brand)";
+    const base = opts.base != null ? `<line x1="${p}" x2="${w - p}" y1="${sy(opts.base).toFixed(1)}" y2="${sy(opts.base).toFixed(1)}" stroke="var(--ink-4)" stroke-dasharray="3 3" stroke-width="1"/>` : "";
+    return `<svg class="${opts.cls || "spark"}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="trend">` +
+      `<path d="${area}" fill="${col}" fill-opacity="0.12" stroke="none"/>${base}` +
+      `<path d="${d}" fill="none" stroke="${col}" stroke-width="1.6" vector-effect="non-scaling-stroke"/>` +
+      `<circle cx="${sx(last[0]).toFixed(1)}" cy="${sy(last[1]).toFixed(1)}" r="2.6" fill="${col}"/></svg>`;
+  }
+
+  // Short label for triage.py's verdict; the full sentence stays in the tooltip.
+  function verdictTag(g) {
+    const v = String(g.verdict || ""), t = esc(v);
+    if (g.alert) return `<span class="tag alert" title="${t}">ALERT &middot; codegen</span>`;
+    if (g.credit) return `<span class="tag credit" title="${t}">CREDIT &middot; codegen</span>`;
+    if (/^codegen changed/.test(v)) return `<span class="tag code" title="${t}">codegen, under 5%</span>`;
+    if (/^same assembly/.test(v)) return `<span class="tag quiet" title="${t}">same asm</span>`;
+    if (/^not reproduced in isolation/.test(v)) return `<span class="tag ctx" title="${t}">suite context</span>`;
+    if (/^not reproduced/.test(v)) return `<span class="tag quiet" title="${t}">noise</span>`;
+    return `<span class="tag quiet" title="${t}">${esc(v.split(":")[0].slice(0, 24))}</span>`;
+  }
+  const VERDICT_KEY = `<p class="key"><span><span class="tag alert">ALERT</span> / <span class="tag credit">CREDIT</span> confirmed beyond 5%, assembly changed, bisected</span>` +
+    `<span><span class="tag quiet">same asm</span> confirmed, identical kernels: runtime or machine</span>` +
+    `<span><span class="tag ctx">suite context</span> moves only inside the full nightly run</span>` +
+    `<span><span class="tag quiet">noise</span> not reproduced in the rerun</span></p>`;
+
+  function triageTable(rows) {
+    if (!rows.length) return "";
+    const body = rows.map((g) => {
+      const v = verdictTag(g);
+      return `<tr><td class="wrapcell">${esc(shortTest(g.test))}</td><td class="mono">${esc(g.params)}</td><td>${esc(g.metric)}</td>` +
+        `<td class="r num ${chgClass(g.delta)}">${pct(g.delta)}</td><td class="r num ${chgClass(g.confirm)}">${pct(g.confirm)}</td>` +
+        `<td>${v}</td><td>${g.commit ? commitLink(g.commit, false) : esc(g.bisect || "")}</td></tr>`;
+    }).join("");
+    return `<div class="tbl"><table><thead><tr><th>bench</th><th>shape</th><th>metric</th><th class="r">night</th><th class="r">rerun</th><th>verdict</th><th>commit</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
+  function triageBlock(n) {
+    if (!n.triton.control) return `<p class="empty">Triton did not move since the previous night, so there was nothing to compare.</p>`;
+    if (!n.triage.length) return `<p class="empty">No point moved more than 5% beyond its noise.</p>`;
+    const reg = n.triage.filter((g) => g.direction === "regression");
+    const imp = n.triage.filter((g) => g.direction !== "regression");
+    return (reg.length ? `<h4 class="chg-bad">Slower</h4>${triageTable(reg)}` : "") +
+           (imp.length ? `<h4 class="chg-good">Faster</h4>${triageTable(imp)}` : "") + VERDICT_KEY;
+  }
+
+  function render(summary, seriesData) {
+    const nights = summary.nights.slice().sort((a, b) => a.night - b.night);
+    const latest = nights[nights.length - 1];
+    const byNight = Object.fromEntries(nights.map((n) => [n.night, n]));
+    const gen = new Date(summary.generated);
+    $("stamp").textContent = `updated ${gen.toISOString().slice(0, 16).replace("T", " ")} UTC · ${nights.length} nights since ${nights[0]?.date || "?"}`;
+    $("foot-gen").textContent = `data generated ${summary.generated} · ${summary.machine}`;
+
+    // ---- status strip
+    const failing = latest.failing || [];
+    $("strip").innerHTML = `
+      <div><div class="label">Last night</div><div class="big">#${esc(latest.night)} <small>${esc(latest.date)}</small></div><div style="margin-top:8px">${pill(latest.status)}</div></div>
+      <div><div class="label">Benches passing</div><div class="big num">${esc(latest.pass)}<small> / ${esc(latest.benches)}</small></div>
+        <div class="sub">${failing.length ? esc(failing.map((f) => shortTest(f.test)).join(", ")) + " failing" : "all pass"}</div></div>
+      <div><div class="label">Open regressions</div><div class="big num" style="color:${summary.open_alerts.length ? "var(--bad)" : "var(--good)"}">${esc(summary.open_alerts.length)}</div>
+        <div class="sub">${summary.open_alerts.length ? esc(summary.open_alerts.map((a) => shortTest(a.test)).join(", ")) : "none"}</div></div>
+      <div><div class="label">Triton main tested</div><div class="big" style="font-size:16px;margin-top:10px">${commitLink(latest.triton.candidate, false)}</div>
+        <div class="sub">${esc(latest.triton.candidate?.subject || "")}</div></div>`;
+
+    // ---- open regressions
+    $("alerts").innerHTML = summary.open_alerts.length ? summary.open_alerts.map((a) => a.shapes.map((s) => {
+      const hist = s.history.map((h) => [h[0], h[1]]);
+      const lastGap = s.history.length ? s.history[s.history.length - 1][2] : null;
+      const now = hist.length ? hist[hist.length - 1][1] : null;
+      const days = a.opened_date ? Math.max(0, Math.round((new Date(latest.date) - new Date(a.opened_date)) / 864e5)) : null;
+      return `<div class="wl-row s-bad">
+          <div class="op">A${esc(a.id)} &middot; ${esc(shortTest(a.test))}<small>opened #${esc(a.opened_night)}, ${esc(a.opened_date)}${days != null ? ` &middot; ${days}d open` : ""}</small></div>
+          <div class="shape">${esc(s.params)}<small style="display:block;color:var(--ink-3);font-size:10px;margin-top:3px">${esc(s.metric)}</small></div>
+          <div class="why">${commitLink(a.culprit, true)}</div>
+          <div>${spark(hist, { w: 280, h: 40, base: s.baseline, color: "var(--bad)", cls: "" })}</div>
+          <div class="wl-delta bad num">${pct(lastGap)}<small>vs #${esc(s.baseline_night)}</small></div>
+          <div class="latest num">${fmtVal(now)}<small>base ${fmtVal(s.baseline)}</small></div></div>`;
+    }).join("")).join("") : `<p class="empty">None. Nothing is confirmed slower than its baseline.</p>`;
+    const credits = summary.credits || [];
+    if (credits.length) {
+      $("alerts").insertAdjacentHTML("beforeend", `<div class="credits"><div class="label" style="margin-bottom:6px">Recent credits &middot; confirmed faster, bisected</div>` +
+        credits.map((c) => `<div class="meta" style="margin:3px 0">#${esc(c.night)} <b>${esc(shortTest(c.test))}</b> ${esc(c.shapes)} shape${c.shapes === 1 ? "" : "s"}, ` +
+          `<span class="chg-good">${c.gain && c.gain[0] != null ? (c.gain[0] === c.gain[1] ? pct(c.gain[0], 0) : `${pct(c.gain[0], 0)} to ${pct(c.gain[1], 0)}`) : ""}</span> from ${commitLink(c.commit, false)}</div>`).join("") + `</div>`);
+    }
+
+    // ---- last night's triage
+    $("latest-sub").textContent = `night #${latest.night}, ${latest.worse} slower / ${latest.better} faster beyond 5% of ${latest.points} points`;
+    $("latest").innerHTML = `<div class="pad">${triageBlock(latest)}</div>`;
+
+    // ---- night log
+    const rows = nights.slice().reverse().map((n) => {
+      const c0 = n.triton.control, c1 = n.triton.candidate;
+      const change = c0 ? `<a class="mono" href="${TRITON}/compare/${esc(c0.sha)}...${esc(c1.sha)}" target="_blank" rel="noopener">${esc(c0.sha.slice(0, 8))}&hellip;${esc(c1.sha.slice(0, 8))}</a>`
+                        : `<span class="mono">${esc(c1?.sha?.slice(0, 8) || "")}</span> <span class="sub">(unchanged)</span>`;
+      return `<tr class="night" tabindex="0" data-night="${esc(n.night)}" aria-expanded="false">
+          <td class="num"><span class="caret" aria-hidden="true">&#9656;</span> #${esc(n.night)}</td><td class="num">${esc(n.date)}</td>
+          <td>${change}<span class="subject">${esc(c1?.subject || "")}</span></td><td>${pill(n.status)}</td>
+          <td class="r num">${esc(n.pass)}/${esc(n.benches)}</td>
+          <td class="r num ${n.worse ? "chg-bad" : ""}">${n.triton.control ? esc(n.worse) : "&ndash;"}</td>
+          <td class="r num ${n.better ? "chg-good" : ""}">${n.triton.control ? esc(n.better) : "&ndash;"}</td>
+          <td class="r num">${n.alerts ? `<span class="chg-bad">${esc(n.alerts)}</span>` : 0} / ${n.credits ? `<span class="chg-good">${esc(n.credits)}</span>` : 0}</td></tr>
+        <tr class="detail" data-for="${esc(n.night)}" hidden><td colspan="8">${triageBlock(n)}${(n.failing || []).length ? `<h4>Failing benches</h4><div class="sub">${n.failing.map((f) => `${esc(shortTest(f.test))}${f.new ? " <b>(new)</b>" : ""}${f.reason ? ": " + esc(f.reason) : ""}`).join("<br>")}</div>` : ""}</td></tr>`;
+    }).join("");
+    $("nights").innerHTML = `<thead><tr><th>Night</th><th>Date</th><th>Triton change</th><th>Status</th><th class="r">Pass</th><th class="r">&gt;5% slower</th><th class="r">&gt;5% faster</th><th class="r">Alerts / credits</th></tr></thead><tbody>${rows}</tbody>`;
+    const toggle = (tr) => {
+      const open = tr.getAttribute("aria-expanded") !== "true";
+      tr.setAttribute("aria-expanded", String(open));
+      $("nights").querySelector(`tr.detail[data-for="${tr.dataset.night}"]`).hidden = !open;
+    };
+    $("nights").addEventListener("click", (e) => { const tr = e.target.closest("tr.night"); if (tr && !e.target.closest("a")) toggle(tr); });
+    $("nights").addEventListener("keydown", (e) => { const tr = e.target.closest("tr.night"); if (tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggle(tr); } });
+
+    // ---- trends
+    const S = seriesData.series;
+    const cats = summary.categories;
+    const benches = {};
+    S.forEach((s, i) => { s.i = i; (benches[s.test] = benches[s.test] || { cat: s.category, list: [] }).list.push(s); });
+    const catSel = $("f-cat"), benchSel = $("f-bench"), shapeIn = $("f-shape");
+    const catKeys = Object.keys(cats).filter((c) => Object.values(benches).some((b) => b.cat === c));
+    catSel.innerHTML = `<option value="">All categories</option>` + catKeys.map((c) => `<option value="${esc(c)}">${esc(cats[c])}</option>`).join("");
+    let chart = null, selected = null;
+
+    function lastDelta(s) { const p = s.pts[s.pts.length - 1]; return p && p[0] === latest.night ? p[2] : null; }
+    function fillBenches() {
+      const c = catSel.value;
+      const names = Object.keys(benches).filter((t) => !c || benches[t].cat === c).sort();
+      const prev = benchSel.value;
+      benchSel.innerHTML = names.map((t) => `<option value="${esc(t)}">${esc(shortTest(t))} (${benches[t].list.length})</option>`).join("");
+      if (names.includes(prev)) benchSel.value = prev;
+    }
+    function fillSeries() {
+      const b = benches[benchSel.value];
+      if (!b) { $("series").innerHTML = ""; return; }
+      const q = shapeIn.value.trim().toLowerCase();
+      const list = b.list.filter((s) => !q || (s.params + " " + s.metric + " " + s.bench).toLowerCase().includes(q));
+      const body = list.map((s) => {
+        const d = lastDelta(s), first = s.pts[0][1], last = s.pts[s.pts.length - 1][1];
+        const span = s.hib ? last / first - 1 : first / last - 1;
+        return `<tr class="series${selected === s.i ? " sel" : ""}" tabindex="0" data-i="${s.i}">
+          <td class="mono">${esc(s.params)}${s.bench !== s.test ? `<span class="subject">${esc(s.bench)}</span>` : ""}</td><td>${esc(s.metric)}${s.hib ? "" : " <span class='sub'>(lower is better)</span>"}</td>
+          <td>${spark(s.pts.map((p) => [p[0], p[1]]), { color: d != null && d <= -0.05 ? "var(--bad)" : d != null && d >= 0.05 ? "var(--good)" : "var(--brand)" })}</td>
+          <td class="r num">${fmtVal(last)}</td><td class="r num ${chgClass(d)}">${pct(d)}</td><td class="r num ${chgClass(span)}">${pct(span)}</td></tr>`;
+      }).join("");
+      $("series").innerHTML = `<thead><tr><th>Shape</th><th>Metric</th><th>Trend</th><th class="r">Last night</th><th class="r">vs night before</th><th class="r">vs first night</th></tr></thead><tbody>${body || `<tr><td colspan="6" class="empty">No shape matches.</td></tr>`}</tbody>`;
+      if (!list.some((s) => s.i === selected) && list.length) select(list[0].i, false);
+    }
+    function select(i, remember = true) {
+      selected = i;
+      const s = S[i];
+      $("series").querySelectorAll("tr.series").forEach((tr) => tr.classList.toggle("sel", Number(tr.dataset.i) === i));
+      const alert = summary.open_alerts.find((a) => a.test === s.test && a.shapes.some((x) => x.params === s.params && x.metric === s.metric));
+      const base = alert ? alert.shapes.find((x) => x.params === s.params && x.metric === s.metric).baseline : null;
+      const labels = s.pts.map((p) => `#${p[0]}`);
+      const ink = cssVar("--ink-2"), muted = cssVar("--ink-3"), grid = cssVar("--border-2"), acc = cssVar("--brand"), bad = cssVar("--bad"), good = cssVar("--good");
+      const ptColor = s.pts.map((p) => p[2] == null ? acc : p[2] <= -0.05 ? bad : p[2] >= 0.05 ? good : acc);
+      const ds = [{ label: s.metric, data: s.pts.map((p) => p[1]), borderColor: acc, backgroundColor: acc + "22", fill: true, tension: 0.15,
+                    pointBackgroundColor: ptColor, pointBorderColor: ptColor, pointRadius: s.pts.map((p) => p[2] != null && Math.abs(p[2]) >= 0.05 ? 5 : 3) }];
+      if (base != null) ds.push({ label: "alert baseline", data: s.pts.map(() => base), borderColor: muted, borderDash: [5, 4], pointRadius: 0, fill: false });
+      const cfg = { type: "line", data: { labels, datasets: ds }, options: {
+        responsive: true, maintainAspectRatio: false, animation: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? false : { duration: 250 },
+        plugins: { legend: { display: base != null, labels: { color: ink } },
+          tooltip: { callbacks: { title: (it) => { const p = s.pts[it[0].dataIndex]; return `night #${p[0]}, ${byNight[p[0]]?.date || ""}`; },
+            afterLabel: (it) => { if (it.datasetIndex) return ""; const p = s.pts[it.dataIndex]; const c = byNight[p[0]]?.triton.candidate;
+              return [p[2] == null ? "Triton unchanged" : `vs night before: ${(p[2] * 100).toFixed(1)}%`, c ? `Triton ${c.sha.slice(0, 8)}` : ""]; } } } },
+        scales: { x: { ticks: { color: muted }, grid: { color: grid } },
+                  y: { ticks: { color: muted }, grid: { color: grid }, title: { display: true, text: s.metric + (s.hib ? "" : " (lower is better)"), color: muted } } } } };
+      if (window.Chart) {
+        if (chart) chart.destroy();
+        chart = new Chart($("chart"), cfg);
+      }
+      $("chart-cap").innerHTML = `<b>${esc(shortTest(s.test))}</b> <span class="mono">${esc(s.params)}</span> &middot; ${esc(s.metric)}. Large dots: the night's A/B moved it more than 5% (red slower, green faster).`;
+      if (remember) store.set("pd-series", `${s.test}|${s.params}|${s.metric}`);
+    }
+    $("series").addEventListener("click", (e) => { const tr = e.target.closest("tr.series"); if (tr) select(Number(tr.dataset.i)); });
+    $("series").addEventListener("keydown", (e) => { const tr = e.target.closest("tr.series"); if (tr && e.key === "Enter") select(Number(tr.dataset.i)); });
+    catSel.addEventListener("change", () => { fillBenches(); fillSeries(); });
+    benchSel.addEventListener("change", () => { selected = null; fillSeries(); store.set("pd-bench", benchSel.value); });
+    shapeIn.addEventListener("input", fillSeries);
+
+    // Start on the viewer's last choice, else on the first open regression, else the biggest mover.
+    let start = null;
+    const remembered = store.get("pd-series");
+    if (remembered) start = S.find((s) => `${s.test}|${s.params}|${s.metric}` === remembered);
+    if (!start && summary.open_alerts.length) {
+      const a = summary.open_alerts[0], sh = a.shapes[0];
+      start = S.find((s) => s.test === a.test && s.params === sh.params && s.metric === sh.metric);
+    }
+    if (!start) start = S.slice().sort((a, b) => Math.abs(lastDelta(b) || 0) - Math.abs(lastDelta(a) || 0))[0];
+    if (start) { catSel.value = ""; fillBenches(); benchSel.value = start.test; selected = start.i; fillSeries(); select(start.i, false); }
+    else { fillBenches(); fillSeries(); }
+
+    // Recolor the chart when the theme flips.
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const recolor = () => { if (selected != null) select(selected, false); };
+    if (mq.addEventListener) mq.addEventListener("change", recolor);
+    new MutationObserver(recolor).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  }
+
+  $("themeBtn").addEventListener("click", () => {
+    const light = document.documentElement.getAttribute("data-theme") !== "light";
+    if (light) document.documentElement.setAttribute("data-theme", "light"); else document.documentElement.removeAttribute("data-theme");
+    store.set("pd-theme", light ? "light" : "dark");
+  });
+  $("refresh").addEventListener("click", () => location.reload());
+  document.addEventListener("keydown", (e) => { if (e.key === "r" && !e.target.closest("input, select, textarea")) location.reload(); });
+
+  Promise.all(["data/summary.json", "data/series.json"].map((u) => fetch(u, { cache: "no-cache" }).then((r) => {
+    if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`);
+    return r.json();
+  }))).then(([summary, series]) => render(summary, series)).catch((e) => {
+    $("strip").innerHTML = `<div class="loading">Could not load the nightly record (${esc(e.message)}). The data files are published next to this page by the nightly job.</div>`;
+    $("stamp").textContent = "no data";
+  });
+})();
+</script>
+</body>
+</html>
